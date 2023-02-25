@@ -4,8 +4,9 @@ import hashlib
 import logging
 import torch
 import torchmetrics
-import sexpdata
 import sys
+
+import pyparsing as pp
 
 # Basis for this LUT dict was the output of the following command:
 # curl -Ss "https://pytorch.org/docs/stable/optim.html" | htmlq -tp 'h2 a, td p a'
@@ -218,10 +219,9 @@ TORCH_LAYERS = {
 }
 
 
-def parse_loss_sexpr(sexpr_loss, losses_lut=TORCH_LOSSES, custom_losses=CUSTOM_LOSSES):
-    if sexpr_loss in custom_losses:
-        return custom_losses[sexpr_loss]
-    sexp = sexpdata.loads(sexpr_loss)
+def parse_loss_sexpr(sexpr_loss, losses_lut=TORCH_LOSSES):
+    parser = pp.Forward()
+    sexp = parser.parse_string(sexpr_loss)
     custom_losses_str = ', '.join([f"'{loss}'" for loss in custom_losses])
     assert isinstance(sexp, list), f"ERROR: Must define loss as sexpr list or use one of {custom_losses_str}."
     params = {}
@@ -247,7 +247,8 @@ def parse_loss_sexpr(sexpr_loss, losses_lut=TORCH_LOSSES, custom_losses=CUSTOM_L
 
 
 def parse_optimizer_sexpr(sexpr_optimizer, optims_lut=TORCH_OPTIMS, net=None):
-    sexp = sexpdata.loads(sexpr_optimizer)
+    parser = pp.Forward()
+    sexp = parser.parse_string(sexpr_optimizer)
     assert isinstance(sexp, list), "ERROR: Must define optimizer as sexpr list."
     params = {}
     optim_last = None
@@ -278,7 +279,8 @@ def parse_optimizer_sexpr(sexpr_optimizer, optims_lut=TORCH_OPTIMS, net=None):
 
 def parse_architecture_sexpr(sexpr_architecture, layers_lut=TORCH_LAYERS, in_shape=None, out_shape=None,
                              typecast_list=True, implicit_shapes=False):
-    sexp = sexpdata.loads(sexpr_architecture)
+    parser = pp.Forward()
+    sexp = parser.parse_string(sexpr_architecture)
     assert isinstance(sexp, list), "ERROR: Must define layers as sexpr list."
     layers = []
     params = {}
