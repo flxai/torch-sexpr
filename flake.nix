@@ -2,7 +2,7 @@
   description = "Parse S-expressions into PyTorch architectures, losses and optimizers";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/695b3515251873e0a7e2021add4bba643c56cde3";
+    nixpkgs.url = "github:NixOS/nixpkgs";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
