@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "torch-sexpr"
+version = "0.1.0"
+description = "Parse S-expressions into PyTorch architectures, losses and optimizers"
+authors = ["Felix <git@flx.ai>"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "torch_sexpr"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+torch = "^1.13.1"
+torchmetrics = "^0.11.2"
+sexpdata = "^0.0.4"
+
+[tool.poetry.scripts]
+torch-sexpr-parse-loss = "torch_sexpr.parse:print_parsed_loss_sexpr"
+torch-sexpr-parse-optimizer = "torch_sexpr.parse:print_parsed_optimizer_sexpr"
+torch-sexpr-parse-architecture = "torch_sexpr.parse:print_parsed_architecture_sexpr"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
