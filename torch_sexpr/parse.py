@@ -1,5 +1,6 @@
 import argparse
 import click
+import functools
 import hashlib
 import logging
 import torch
@@ -7,314 +8,540 @@ import torchmetrics
 import sexpdata
 import sys
 
-# Basis for this LUT dict was the output of the following command:
-# curl -Ss "https://pytorch.org/docs/stable/optim.html" | htmlq -tp 'h2 a, td p a'
+# PyTorch optimizers
 # cf. https://pytorch.org/docs/stable/optim.html#algorithms
-TORCH_OPTIMS = {
-    "Adadelta": torch.optim.Adadelta,
-    "Adagrad": torch.optim.Adagrad,
-    "Adam": torch.optim.Adam,
-    "AdamW": torch.optim.AdamW,
-    "SparseAdam": torch.optim.SparseAdam,
-    "Adamax": torch.optim.Adamax,
-    "ASGD": torch.optim.ASGD,
-    "LBFGS": torch.optim.LBFGS,
-    "NAdam": torch.optim.NAdam,
-    "RAdam": torch.optim.RAdam,
-    "RMSprop": torch.optim.RMSprop,
-    "Rprop": torch.optim.Rprop,
-    "SGD": torch.optim.SGD,
-}
+# curl -Ss "https://pytorch.org/docs/stable/_sources/optim.rst.txt" | tac | tac | awk '$0=="Algorithms" { s1=1 } $0=="How to adjust learning rate" { s2=1 } s2==1 && $0=="" { exit } s1==1 && $0 ~ /^ +[[:upper:]]/ { print $1 }' | sed -r 's/(.+)/    "\1",/' | sort
+_TORCH_OPTIMS = [
+    "Adadelta",
+    "Adagrad",
+    "Adam",
+    "Adamax",
+    "AdamW",
+    "ASGD",
+    "LBFGS",
+    "NAdam",
+    "RAdam",
+    "RMSprop",
+    "Rprop",
+    "SGD",
+    "SparseAdam",
+]
 
-TORCH_LOSSES = {
-    # PyTorch loss functions
-    # cf. https://pytorch.org/docs/stable/nn.html#loss-functions
-    "L1Loss": torch.nn.L1Loss,
-    "MSELoss": torch.nn.MSELoss,
-    "CrossEntropyLoss": torch.nn.CrossEntropyLoss,
-    "CTCLoss": torch.nn.CTCLoss,
-    "NLLLoss": torch.nn.NLLLoss,
-    "PoissonNLLLoss": torch.nn.PoissonNLLLoss,
-    "GaussianNLLLoss": torch.nn.GaussianNLLLoss,
-    "KLDivLoss": torch.nn.KLDivLoss,
-    "BCELoss": torch.nn.BCELoss,
-    "BCEWithLogitsLoss": torch.nn.BCEWithLogitsLoss,
-    "MarginRankingLoss": torch.nn.MarginRankingLoss,
-    "HingeEmbeddingLoss": torch.nn.HingeEmbeddingLoss,
-    "MultiLabelMarginLoss": torch.nn.MultiLabelMarginLoss,
-    "HuberLoss": torch.nn.HuberLoss,
-    "SmoothL1Loss": torch.nn.SmoothL1Loss,
-    "SoftMarginLoss": torch.nn.SoftMarginLoss,
-    "MultiLabelSoftMarginLoss": torch.nn.MultiLabelSoftMarginLoss,
-    "CosineEmbeddingLoss": torch.nn.CosineEmbeddingLoss,
-    "MultiMarginLoss": torch.nn.MultiMarginLoss,
-    "TripletMarginLoss": torch.nn.TripletMarginLoss,
-    "TripletMarginWithDistanceLoss": torch.nn.TripletMarginWithDistanceLoss,
+# PyTorch loss functions
+# cf. https://pytorch.org/docs/stable/nn.html#loss-functions
+# curl -Ss "https://pytorch.org/docs/stable/_sources/nn.rst.txt" | tac | tac | awk '$0=="Loss Functions" { s1=1 } $0=="Vision Layers" { s2=1 } s2==1 && $0=="" { exit } s1==1 && $0 ~ /^ +nn\./ { print $1 }' | sed -r 's/nn\.//;s/(.+)/    "\1",/' | sort
+_TORCH_LOSSES = [
+    "BCELoss",
+    "BCEWithLogitsLoss",
+    "CosineEmbeddingLoss",
+    "CrossEntropyLoss",
+    "CTCLoss",
+    "GaussianNLLLoss",
+    "HingeEmbeddingLoss",
+    "HuberLoss",
+    "KLDivLoss",
+    "L1Loss",
+    "MarginRankingLoss",
+    "MSELoss",
+    "MultiLabelMarginLoss",
+    "MultiLabelSoftMarginLoss",
+    "MultiMarginLoss",
+    "NLLLoss",
+    "PoissonNLLLoss",
+    "SmoothL1Loss",
+    "SoftMarginLoss",
+    "TripletMarginLoss",
+    "TripletMarginWithDistanceLoss",
+]
 
-    # torchmetrics loss functions
-    "MeanSquaredLogError": torchmetrics.MeanSquaredLogError,
-}
+# TorchMetrics 
+# cf. https://github.com/Lightning-AI/metrics
+# git clone --depth=1 "https://github.com/Lightning-AI/metrics.git" &> /dev/null && grep -hrI "autoclass:: torchmetrics" | awk '{ print $3 }' | sort | uniq | sed -r 's/torchmetrics\.//;s/(.+)/    "\1",/' | sort
+_TORCHMETRICS = [
+    "Accuracy",
+    "audio.pesq.PerceptualEvaluationSpeechQuality",
+    "audio.stoi.ShortTimeObjectiveIntelligibility",
+    "AUROC",
+    "AveragePrecision",
+    "BLEUScore",
+    "BootStrapper",
+    "CalibrationError",
+    "CatMetric",
+    "CharErrorRate",
+    "CHRFScore",
+    "classification.BinaryAccuracy",
+    "classification.BinaryAUROC",
+    "classification.BinaryAveragePrecision",
+    "classification.BinaryCalibrationError",
+    "classification.BinaryCohenKappa",
+    "classification.BinaryConfusionMatrix",
+    "classification.BinaryF1Score",
+    "classification.BinaryFBetaScore",
+    "classification.BinaryHammingDistance",
+    "classification.BinaryHingeLoss",
+    "classification.BinaryJaccardIndex",
+    "classification.BinaryMatthewsCorrCoef",
+    "classification.BinaryPrecision",
+    "classification.BinaryPrecisionRecallCurve",
+    "classification.BinaryRecall",
+    "classification.BinaryRecallAtFixedPrecision",
+    "classification.BinaryROC",
+    "classification.BinarySpecificity",
+    "classification.BinarySpecificityAtSensitivity",
+    "classification.BinaryStatScores",
+    "classification.MulticlassAccuracy",
+    "classification.MulticlassAUROC",
+    "classification.MulticlassAveragePrecision",
+    "classification.MulticlassCalibrationError",
+    "classification.MulticlassCohenKappa",
+    "classification.MulticlassConfusionMatrix",
+    "classification.MulticlassExactMatch",
+    "classification.MulticlassF1Score",
+    "classification.MulticlassFBetaScore",
+    "classification.MulticlassHammingDistance",
+    "classification.MulticlassHingeLoss",
+    "classification.MulticlassJaccardIndex",
+    "classification.MulticlassMatthewsCorrCoef",
+    "classification.MulticlassPrecision",
+    "classification.MulticlassPrecisionRecallCurve",
+    "classification.MulticlassRecall",
+    "classification.MulticlassRecallAtFixedPrecision",
+    "classification.MulticlassROC",
+    "classification.MulticlassSpecificity",
+    "classification.MulticlassSpecificityAtSensitivity",
+    "classification.MulticlassStatScores",
+    "classification.MultilabelAccuracy",
+    "classification.MultilabelAUROC",
+    "classification.MultilabelAveragePrecision",
+    "classification.MultilabelConfusionMatrix",
+    "classification.MultilabelCoverageError",
+    "classification.MultilabelExactMatch",
+    "classification.MultilabelF1Score",
+    "classification.MultilabelFBetaScore",
+    "classification.MultilabelHammingDistance",
+    "classification.MultilabelJaccardIndex",
+    "classification.MultilabelMatthewsCorrCoef",
+    "classification.MultilabelPrecision",
+    "classification.MultilabelPrecisionRecallCurve",
+    "classification.MultilabelRankingAveragePrecision",
+    "classification.MultilabelRankingLoss",
+    "classification.MultilabelRecall",
+    "classification.MultilabelRecallAtFixedPrecision",
+    "classification.MultilabelROC",
+    "classification.MultilabelSpecificity",
+    "classification.MultilabelSpecificityAtSensitivity",
+    "classification.MultilabelStatScores",
+    "ClasswiseWrapper",
+    "CohenKappa",
+    "ConcordanceCorrCoef",
+    "ConfusionMatrix",
+    "CosineSimilarity",
+    "CramersV",
+    "detection.mean_ap.MeanAveragePrecision",
+    "Dice",
+    "ExactMatch",
+    "ExplainedVariance",
+    "ExtendedEditDistance",
+    "F1Score",
+    "FBetaScore",
+    "HammingDistance",
+    "HingeLoss",
+    "image.ergas.ErrorRelativeGlobalDimensionlessSynthesis",
+    "image.fid.FrechetInceptionDistance",
+    "image.inception.InceptionScore",
+    "image.kid.KernelInceptionDistance",
+    "image.lpip.LearnedPerceptualImagePatchSimilarity",
+    "JaccardIndex",
+    "KendallRankCorrCoef",
+    "KLDivergence",
+    "LogCoshError",
+    "MatchErrorRate",
+    "MatthewsCorrCoef",
+    "MaxMetric",
+    "MeanAbsoluteError",
+    "MeanAbsolutePercentageError",
+    "MeanMetric",
+    "MeanSquaredError",
+    "MeanSquaredLogError",
+    "Metric",
+    "MetricCollection",
+    "MetricTracker",
+    "MinkowskiDistance",
+    "MinMaxMetric",
+    "MinMetric",
+    "multimodal.clip_score.CLIPScore",
+    "MultioutputWrapper",
+    "MultiScaleStructuralSimilarityIndexMeasure",
+    "PanopticQuality",
+    "PeakSignalNoiseRatio",
+    "PearsonCorrCoef",
+    "PearsonsContingencyCoefficient",
+    "PermutationInvariantTraining",
+    "Precision",
+    "PrecisionRecallCurve",
+    "R2Score",
+    "Recall",
+    "RetrievalFallOut",
+    "RetrievalHitRate",
+    "RetrievalMAP",
+    "RetrievalMRR",
+    "RetrievalNormalizedDCG",
+    "RetrievalPrecision",
+    "RetrievalPrecisionRecallCurve",
+    "RetrievalRecall",
+    "RetrievalRPrecision",
+    "ROC",
+    "SacreBLEUScore",
+    "ScaleInvariantSignalDistortionRatio",
+    "ScaleInvariantSignalNoiseRatio",
+    "SignalDistortionRatio",
+    "SignalNoiseRatio",
+    "SpearmanCorrCoef",
+    "Specificity",
+    "SpectralAngleMapper",
+    "SpectralDistortionIndex",
+    "SQuAD",
+    "StatScores",
+    "StructuralSimilarityIndexMeasure",
+    "SumMetric",
+    "SymmetricMeanAbsolutePercentageError",
+    "text.bert.BERTScore",
+    "text.infolm.InfoLM",
+    "text.perplexity.Perplexity",
+    "text.rouge.ROUGEScore",
+    "TheilsU",
+    "TotalVariation",
+    "TranslationEditRate",
+    "TschuprowsT",
+    "TweedieDevianceScore",
+    "UniversalImageQualityIndex",
+    "WeightedMeanAbsolutePercentageError",
+    "WordErrorRate",
+    "WordInfoLost",
+    "WordInfoPreserved",
+]
 
-# Basis for this LUT dict was the output of the following command:
-# curl -Ss "https://pytorch.org/docs/stable/nn.html" | htmlq -tp 'h2 a, td p a'
-TORCH_LAYERS = {
-    # Convolution Layers
-    "Conv1d": torch.nn.Conv1d,
-    "Conv2d": torch.nn.Conv2d,
-    "Conv3d": torch.nn.Conv3d,
-    "ConvTranspose1d": torch.nn.ConvTranspose1d,
-    "ConvTranspose2d": torch.nn.ConvTranspose2d,
-    "ConvTranspose3d": torch.nn.ConvTranspose3d,
-    "LazyConv1d": torch.nn.LazyConv1d,
-    "LazyConv2d": torch.nn.LazyConv2d,
-    "LazyConv3d": torch.nn.LazyConv3d,
-    "LazyConvTranspose1d": torch.nn.LazyConvTranspose1d,
-    "LazyConvTranspose2d": torch.nn.LazyConvTranspose2d,
-    "LazyConvTranspose3d": torch.nn.LazyConvTranspose3d,
-    "Unfold": torch.nn.Unfold,
-    "Fold": torch.nn.Fold,
+# PyTorch loss functions
+# cf. https://pytorch.org/docs/stable/nn.html#loss-functions
+# Containing the following categories
+#  - Convolution Layers
+#  - Pooling layers
+#  - Padding Layers
+#  - Non-linear Activations (weighted sum, nonlinearity)
+#  - Non-linear Activations (other)
+#  - Normalization Layers
+#  - Group Normalization
+#  - Recurrent Layers
+#  - Transformer Layers
+#  - Linear Layers
+#  - Dropout Layers
+#  - Sparse Layers
+#  - Distance Functions
+#  - Vision Layers
+#  - Shuffle Layers
+#  - DataParallel Layers (multi-GPU, distributed)
+#  - Utility Functions
+# curl -Ss "https://pytorch.org/docs/stable/_sources/nn.rst.txt" | tac | tac | awk '$0=="Loss Functions" { l=1 } $0=="Vision Layers" { l=0 } $0=="Convolution Layers" { s1=1 } $0=="Utilities" { s2=1 } s2==1 && $0=="" { exit } l==0 && s1==1 && $0 ~ /^ +nn\./ { print $1 }' | sed -r 's/nn\.//;s/(.+)/    "\1",/' | sort
+_TORCH_LAYERS = [
+    "AdaptiveAvgPool1d",
+    "AdaptiveAvgPool2d",
+    "AdaptiveAvgPool3d",
+    "AdaptiveLogSoftmaxWithLoss",
+    "AdaptiveMaxPool1d",
+    "AdaptiveMaxPool2d",
+    "AdaptiveMaxPool3d",
+    "AlphaDropout",
+    "AvgPool1d",
+    "AvgPool2d",
+    "AvgPool3d",
+    "BatchNorm1d",
+    "BatchNorm2d",
+    "BatchNorm3d",
+    "Bilinear",
+    "CELU",
+    "ChannelShuffle",
+    "ConstantPad1d",
+    "ConstantPad2d",
+    "ConstantPad3d",
+    "Conv1d",
+    "Conv2d",
+    "Conv3d",
+    "ConvTranspose1d",
+    "ConvTranspose2d",
+    "ConvTranspose3d",
+    "CosineSimilarity",
+    "DataParallel",
+    "Dropout",
+    "Dropout1d",
+    "Dropout2d",
+    "Dropout3d",
+    "ELU",
+    "Embedding",
+    "EmbeddingBag",
+    "FeatureAlphaDropout",
+    "Fold",
+    "Flatten",
+    "FractionalMaxPool2d",
+    "FractionalMaxPool3d",
+    "GELU",
+    "GLU",
+    "GroupNorm",
+    "GRU",
+    "GRUCell",
+    "Hardshrink",
+    "Hardsigmoid",
+    "Hardswish",
+    "Hardtanh",
+    "Identity",
+    "InstanceNorm1d",
+    "InstanceNorm2d",
+    "InstanceNorm3d",
+    "LayerNorm",
+    "LazyBatchNorm1d",
+    "LazyBatchNorm2d",
+    "LazyBatchNorm3d",
+    "LazyConv1d",
+    "LazyConv2d",
+    "LazyConv3d",
+    "LazyConvTranspose1d",
+    "LazyConvTranspose2d",
+    "LazyConvTranspose3d",
+    "LazyInstanceNorm1d",
+    "LazyInstanceNorm2d",
+    "LazyInstanceNorm3d",
+    "LazyLinear",
+    "LeakyReLU",
+    "Linear",
+    "LocalResponseNorm",
+    "LogSigmoid",
+    "LogSoftmax",
+    "LPPool1d",
+    "LPPool2d",
+    "LSTM",
+    "LSTMCell",
+    "MaxPool1d",
+    "MaxPool2d",
+    "MaxPool3d",
+    "MaxUnpool1d",
+    "MaxUnpool2d",
+    "MaxUnpool3d",
+    "Mish",
+    "MultiheadAttention",
+    "PairwiseDistance",
+    "parallel.DistributedDataParallel",
+    "PixelShuffle",
+    "PixelUnshuffle",
+    "PReLU",
+    "ReflectionPad1d",
+    "ReflectionPad2d",
+    "ReflectionPad3d",
+    "ReLU",
+    "ReLU6",
+    "ReplicationPad1d",
+    "ReplicationPad2d",
+    "ReplicationPad3d",
+    "RNN",
+    "RNNBase",
+    "RNNCell",
+    "RReLU",
+    "SELU",
+    "Sigmoid",
+    "SiLU",
+    "Softmax",
+    "Softmax2d",
+    "Softmin",
+    "Softplus",
+    "Softshrink",
+    "Softsign",
+    "SyncBatchNorm",
+    "Tanh",
+    "Tanhshrink",
+    "Threshold",
+    "Transformer",
+    "TransformerDecoder",
+    "TransformerDecoderLayer",
+    "TransformerEncoder",
+    "TransformerEncoderLayer",
+    "Unflatten",
+    "Unfold",
+    "Upsample",
+    "UpsamplingBilinear2d",
+    "UpsamplingNearest2d",
+    "ZeroPad2d",
+]
 
-    # Pooling layers
-    "MaxPool1d": torch.nn.MaxPool1d,
-    "MaxPool2d": torch.nn.MaxPool2d,
-    "MaxPool3d": torch.nn.MaxPool3d,
-    "MaxUnpool1d": torch.nn.MaxUnpool1d,
-    "MaxUnpool2d": torch.nn.MaxUnpool2d,
-    "MaxUnpool3d": torch.nn.MaxUnpool3d,
-    "AvgPool1d": torch.nn.AvgPool1d,
-    "AvgPool2d": torch.nn.AvgPool2d,
-    "AvgPool3d": torch.nn.AvgPool3d,
-    "FractionalMaxPool2d": torch.nn.FractionalMaxPool2d,
-    "FractionalMaxPool3d": torch.nn.FractionalMaxPool3d,
-    "LPPool1d": torch.nn.LPPool1d,
-    "LPPool2d": torch.nn.LPPool2d,
-    "AdaptiveMaxPool1d": torch.nn.AdaptiveMaxPool1d,
-    "AdaptiveMaxPool2d": torch.nn.AdaptiveMaxPool2d,
-    "AdaptiveMaxPool3d": torch.nn.AdaptiveMaxPool3d,
-    "AdaptiveAvgPool1d": torch.nn.AdaptiveAvgPool1d,
-    "AdaptiveAvgPool2d": torch.nn.AdaptiveAvgPool2d,
-    "AdaptiveAvgPool3d": torch.nn.AdaptiveAvgPool3d,
+class SExprParser:
+    def __init__(self, fail_summary=False, fail_list=False):
+        self.fail_summary = fail_summary
+        self.fail_list = fail_list
+        self.optims = None
+        self.losses = None
+        self.layers = None
+        self.fails_optims = None
+        self.fails_losses = None
+        self.fails_layers = None
+        self.initial_fail = True
 
-    # Padding Layers
-    "ReflectionPad1d": torch.nn.ReflectionPad1d,
-    "ReflectionPad2d": torch.nn.ReflectionPad2d,
-    "ReflectionPad3d": torch.nn.ReflectionPad3d,
-    "ReplicationPad1d": torch.nn.ReplicationPad1d,
-    "ReplicationPad2d": torch.nn.ReplicationPad2d,
-    "ReplicationPad3d": torch.nn.ReplicationPad3d,
-    "ZeroPad2d": torch.nn.ZeroPad2d,
-    "ConstantPad1d": torch.nn.ConstantPad1d,
-    "ConstantPad2d": torch.nn.ConstantPad2d,
-    "ConstantPad3d": torch.nn.ConstantPad3d,
+    @staticmethod
+    def _getattr_recursive(path):
+        return 
 
-    # Non-linear Activations (weighted sum, nonlinearity)
-    "ELU": torch.nn.ELU,
-    "Hardshrink": torch.nn.Hardshrink,
-    "Hardsigmoid": torch.nn.Hardsigmoid,
-    "Hardtanh": torch.nn.Hardtanh,
-    "Hardswish": torch.nn.Hardswish,
-    "LeakyReLU": torch.nn.LeakyReLU,
-    "LogSigmoid": torch.nn.LogSigmoid,
-    "MultiheadAttention": torch.nn.MultiheadAttention,
-    "PReLU": torch.nn.PReLU,
-    "ReLU": torch.nn.ReLU,
-    "ReLU6": torch.nn.ReLU6,
-    "RReLU": torch.nn.RReLU,
-    "SELU": torch.nn.SELU,
-    "CELU": torch.nn.CELU,
-    "GELU": torch.nn.GELU,
-    "Sigmoid": torch.nn.Sigmoid,
-    "SiLU": torch.nn.SiLU,
-    "Mish": torch.nn.Mish,
-    "Softplus": torch.nn.Softplus,
-    "Softshrink": torch.nn.Softshrink,
-    "Softsign": torch.nn.Softsign,
-    "Tanh": torch.nn.Tanh,
-    "Tanhshrink": torch.nn.Tanhshrink,
-    "Threshold": torch.nn.Threshold,
-    "GLU": torch.nn.GLU,
+    def _extrapolate_module_keys(self, keys, base_module):
+        ret = {}
+        fails = {}
+        for key in keys:
+            key_path = key.split('.')
+            try:
+                abs_path = [sys.modules[base_module]] + key_path
+                ret[key] = functools.reduce(lambda a, b: getattr(a, b), abs_path)
+            except AttributeError as e:
+                name = e.obj.__name__
+                if name in fails:
+                    fails[name] += [e.name]
+                else:
+                    fails[name] = []
+        return ret, fails
 
-    # Non-linear Activations (other)
-    "Softmin": torch.nn.Softmin,
-    "Softmax": torch.nn.Softmax,
-    "Softmax2d": torch.nn.Softmax2d,
-    "LogSoftmax": torch.nn.LogSoftmax,
-    "AdaptiveLogSoftmaxWithLoss": torch.nn.AdaptiveLogSoftmaxWithLoss,
+    def report_fails(self, fails):
+        if self.fail_summary and len(fails):
+            if self.initial_fail:
+                print("The following methods could not be imported (your PyTorch/TorchMetrics version might be too old:")
+            for fail, failed_names in fails.items():
+                count = len(failed_names)
+                print(f"Failed imports for '{fail}': {count}")
+                for name in failed_names:
+                    print(f"  {name}")
 
-    # Normalization Layers
-    "BatchNorm1d": torch.nn.BatchNorm1d,
-    "BatchNorm2d": torch.nn.BatchNorm2d,
-    "BatchNorm3d": torch.nn.BatchNorm3d,
-    "LazyBatchNorm1d": torch.nn.LazyBatchNorm1d,
-    "LazyBatchNorm2d": torch.nn.LazyBatchNorm2d,
-    "LazyBatchNorm3d": torch.nn.LazyBatchNorm3d,
-    "GroupNorm": torch.nn.GroupNorm,
+    def _load_optims(self):
+        if not self.optims:
+            self.optims, fails_optims = self._extrapolate_module_keys(_TORCH_OPTIMS, 'torch.optim')
+            self.fails_optims = fails_optims
+            self.report_fails(self.fails_optims)
 
-    # Group Normalization
-    "SyncBatchNorm": torch.nn.SyncBatchNorm,
-    "InstanceNorm1d": torch.nn.InstanceNorm1d,
-    "InstanceNorm2d": torch.nn.InstanceNorm2d,
-    "InstanceNorm3d": torch.nn.InstanceNorm3d,
-    "LazyInstanceNorm1d": torch.nn.LazyInstanceNorm1d,
-    "LazyInstanceNorm2d": torch.nn.LazyInstanceNorm2d,
-    "LazyInstanceNorm3d": torch.nn.LazyInstanceNorm3d,
-    "LayerNorm": torch.nn.LayerNorm,
+    def _load_losses(self):
+        if not self.losses:
+            losses_torch, fails_losses_torch = self._extrapolate_module_keys(_TORCH_LOSSES, 'torch.nn')
+            losses_torchmetrics, fails_losses_torchmetrics = \
+                    self._extrapolate_module_keys(_TORCHMETRICS, 'torchmetrics')
+            self.losses = losses_torch | losses_torchmetrics
+            self.fails_losses = fails_losses_torch | fails_losses_torchmetrics
+            self.report_fails(self.fails_losses)
 
-    # Recurrent Layers
-    "RNNBase": torch.nn.RNNBase,
-    "RNN": torch.nn.RNN,
-    "LSTM": torch.nn.LSTM,
-    "GRU": torch.nn.GRU,
-    "RNNCell": torch.nn.RNNCell,
-    "LSTMCell": torch.nn.LSTMCell,
-    "GRUCell": torch.nn.GRUCell,
+    def _load_layers(self):
+        if not self.layers:
+            self.layers, fails_layers = self._extrapolate_module_keys(_TORCH_LAYERS, 'torch.nn')
+            self.fails_layers = fails_layers
+            self.report_fails(self.fails_layers)
 
-    # Transformer Layers
-    "Transformer": torch.nn.Transformer,
-    "TransformerEncoder": torch.nn.TransformerEncoder,
-    "TransformerDecoder": torch.nn.TransformerDecoder,
-    "TransformerEncoderLayer": torch.nn.TransformerEncoderLayer,
-    "TransformerDecoderLayer": torch.nn.TransformerDecoderLayer,
+    def parse_loss_sexpr(self, sexpr_loss):
+        self._load_losses()
+        sexp = sexpdata.loads(sexpr_loss)
+        assert isinstance(sexp, list), f"ERROR: Must define loss as sexpr list."
+        params = {}
+        loss_last = None
+        for s in sexp:
+            assert isinstance(s, sexpdata.Symbol) or isinstance(s, list), \
+                "ERROR: Expecting parameter to be either sexpdata.Symbol or list."
+            if isinstance(s, sexpdata.Symbol):
+                v = s.value()
+                assert v in self.losses, f"ERROR: Loss type '{v}' is not allowed, for a list of options see: https://pytorch.org/docs/stable/nn.html#loss-functions"
+                assert loss_last is None, f"ERROR: Cannot set multiple loss functions."
+                loss_last = v
+            elif isinstance(s, list):
+                assert len(s) == 2, f"ERROR: Key-value pair has unexpected length: {[_s.value() for _s in s]}"
+                assert loss_last is not None, f"ERROR: Loss definition has to start with an loss, not its properties."
+                k = s[0].value()
+                v = s[1]
+                if isinstance(v, sexpdata.Symbol):
+                    v = v.value()
+                params[k] = v
+        loss = self.losses[loss_last](**params)
+        return loss
 
-    # Linear Layers
-    "Identity": torch.nn.Identity,
-    "Linear": torch.nn.Linear,
-    "Bilinear": torch.nn.Bilinear,
-    "LazyLinear": torch.nn.LazyLinear,
+    def parse_optimizer_sexpr(self, sexpr_optimizer, net=None):
+        self._load_optims()
+        sexp = sexpdata.loads(sexpr_optimizer)
+        assert isinstance(sexp, list), "ERROR: Must define optimizer as sexpr list."
+        params = {}
+        optim_last = None
+        for s in sexp:
+            assert isinstance(s, sexpdata.Symbol) or isinstance(s, list), \
+                "ERROR: Expecting parameter to be either sexpdata.Symbol or list."
+            if isinstance(s, sexpdata.Symbol):
+                v = s.value()
+                assert v in self.optims, f"ERROR: Optimizer type '{v}' is not allowed, for a list of options see: https://pytorch.org/docs/stable/optim.html#algorithms"
+                assert optim_last is None, f"ERROR: Cannot set multiple optimizers."
+                optim_last = v
+            elif isinstance(s, list):
+                assert len(s) == 2, f"ERROR: Key-value pair has unexpected length: {[_s.value() for _s in s]}"
+                assert optim_last is not None, f"ERROR: Optimizer definition has to start with an optimizer, not its properties."
+                k = s[0].value()
+                v = s[1]
+                if isinstance(v, sexpdata.Symbol):
+                    v = v.value()
+                params[k] = v
+        # Apply optimizer to network's parameters only if given
+        if net is not None:
+            optim = self.optims[optim_last](net.parameters(), **params)
+        # Otherwise give back a bogus optimizer and just throw no exception if parsed successfully
+        else:
+            optim = self.optims[optim_last]([torch.empty(1)], **params)
+        return optim
 
-    # Dropout Layers
-    "Dropout": torch.nn.Dropout,
-    # "Dropout1d": torch.nn.Dropout1d,
-    "Dropout2d": torch.nn.Dropout2d,
-    "Dropout3d": torch.nn.Dropout3d,
-    "AlphaDropout": torch.nn.AlphaDropout,
-    "FeatureAlphaDropout": torch.nn.FeatureAlphaDropout,
+    def parse_architecture_sexpr(self, sexpr_architecture, typecast_list=True):
+        self._load_layers()
+        sexp = sexpdata.loads(sexpr_architecture)
+        assert isinstance(sexp, list), "ERROR: Must define layers as sexpr list."
+        layers = []
+        params = {}
+        layer_last = None
+        for s in sexp:
+            assert isinstance(s, sexpdata.Symbol) or isinstance(s, list), \
+                "ERROR: Expecting parameter to be either sexpdata.Symbol or list."
+            if isinstance(s, sexpdata.Symbol):
+                v = s.value()
+                assert v in self.layers, f"ERROR: Layer type '{v}' is not allowed, for a list of options see: https://pytorch.org/docs/stable/nn.html"
+                # Add last layer with collected properties
+                if layer_last is not None:
+                    # if len(layers) == 0 and implicit_shapes:
+                    #     # TODO Allow for fixed/implicit out_features
+                    #     print(layer_last)
+                    layers.append(self.layers[layer_last](**params))
+                # Flush params for next layer
+                params = {}
+                # Cache current layer to add properties
+                layer_last = v
+            elif isinstance(s, list):
+                assert len(s) == 2, f"ERROR: Key-value pair has unexpected length: {[_s.value() for _s in s]}"
+                assert layer_last is not None, f"ERROR: Architecture definition has to start with a layer, not its properties."
+                k = s[0].value()
+                v = s[1]
+                if isinstance(v, sexpdata.Symbol):
+                    v = v.value()
+                if isinstance(v, list) and typecast_list:
+                    v = tuple(v)
+                # TODO Make 'size' a special dynamic word for in_features/out_features
+                params[k] = v
+        # Add last layer from cache
+        # TODO Allow for fixed/implicit out_features
+        layers.append(self.layers[layer_last](**params))
+        net = torch.nn.Sequential(*layers)
+        return net
 
-    # Sparse Layers
-    "Embedding": torch.nn.Embedding,
-    "EmbeddingBag": torch.nn.EmbeddingBag,
+    @property
+    def failed_count_optims(self):
+        return 42
 
-    # Distance Functions
-    "CosineSimilarity": torch.nn.CosineSimilarity,
-    "PairwiseDistance": torch.nn.PairwiseDistance,
+    @property
+    def failed_count_losses(self):
+        return 42
 
-    # Vision Layers
-    "PixelShuffle": torch.nn.PixelShuffle,
-    "PixelUnshuffle": torch.nn.PixelUnshuffle,
-    "Upsample": torch.nn.Upsample,
-    "UpsamplingNearest2d": torch.nn.UpsamplingNearest2d,
-    "UpsamplingBilinear2d": torch.nn.UpsamplingBilinear2d,
-
-    # Shuffle Layers
-    "ChannelShuffle": torch.nn.ChannelShuffle,
-
-    # DataParallel Layers (multi-GPU, distributed)
-    "DataParallel": torch.nn.DataParallel,
-    "parallel.DistributedDataParallel": torch.nn.parallel.DistributedDataParallel,
-
-    # Utility Functions
-    "Flatten": torch.nn.Flatten,
-    "Unflatten": torch.nn.Unflatten,
-}
-
-
-def parse_loss_sexpr(sexpr_loss, losses_lut=TORCH_LOSSES):
-    if sexpr_loss in custom_losses:
-        return custom_losses[sexpr_loss]
-    sexp = sexpdata.loads(sexpr_loss)
-    custom_losses_str = ', '.join([f"'{loss}'" for loss in custom_losses])
-    assert isinstance(sexp, list), f"ERROR: Must define loss as sexpr list or use one of {custom_losses_str}."
-    params = {}
-    loss_last = None
-    for s in sexp:
-        assert isinstance(s, sexpdata.Symbol) or isinstance(s, list), \
-            "ERROR: Expecting parameter to be either sexpdata.Symbol or list."
-        if isinstance(s, sexpdata.Symbol):
-            v = s.value()
-            assert v in losses_lut, f"ERROR: Loss type '{v}' is not allowed, for a list of options see: https://pytorch.org/docs/stable/nn.html#loss-functions"
-            assert loss_last is None, f"ERROR: Cannot set multiple loss functions."
-            loss_last = v
-        elif isinstance(s, list):
-            assert len(s) == 2, f"ERROR: Key-value pair has unexpected length: {[_s.value() for _s in s]}"
-            assert loss_last is not None, f"ERROR: Loss definition has to start with an loss, not its properties."
-            k = s[0].value()
-            v = s[1]
-            if isinstance(v, sexpdata.Symbol):
-                v = v.value()
-            params[k] = v
-    loss = losses_lut[loss_last](**params)
-    return loss
-
-
-def parse_optimizer_sexpr(sexpr_optimizer, optims_lut=TORCH_OPTIMS, net=None):
-    sexp = sexpdata.loads(sexpr_optimizer)
-    assert isinstance(sexp, list), "ERROR: Must define optimizer as sexpr list."
-    params = {}
-    optim_last = None
-    for s in sexp:
-        assert isinstance(s, sexpdata.Symbol) or isinstance(s, list), \
-            "ERROR: Expecting parameter to be either sexpdata.Symbol or list."
-        if isinstance(s, sexpdata.Symbol):
-            v = s.value()
-            assert v in optims_lut, f"ERROR: Optimizer type '{v}' is not allowed, for a list of options see: https://pytorch.org/docs/stable/optim.html#algorithms"
-            assert optim_last is None, f"ERROR: Cannot set multiple optimizers."
-            optim_last = v
-        elif isinstance(s, list):
-            assert len(s) == 2, f"ERROR: Key-value pair has unexpected length: {[_s.value() for _s in s]}"
-            assert optim_last is not None, f"ERROR: Optimizer definition has to start with an optimizer, not its properties."
-            k = s[0].value()
-            v = s[1]
-            if isinstance(v, sexpdata.Symbol):
-                v = v.value()
-            params[k] = v
-    # Apply optimizer to network's parameters only if given
-    if net is not None:
-        optim = optims_lut[optim_last](net.parameters(), **params)
-    else:
-        # This gives back a bogus optimizer and just throws no exception if parsed successfully
-        optim = optims_lut[optim_last]([torch.empty(1)], **params)
-    return optim
-
-
-def parse_architecture_sexpr(sexpr_architecture, layers_lut=TORCH_LAYERS, in_shape=None, out_shape=None,
-                             typecast_list=True, implicit_shapes=False):
-    sexp = sexpdata.loads(sexpr_architecture)
-    assert isinstance(sexp, list), "ERROR: Must define layers as sexpr list."
-    layers = []
-    params = {}
-    layer_last = None
-    for s in sexp:
-        assert isinstance(s, sexpdata.Symbol) or isinstance(s, list), \
-            "ERROR: Expecting parameter to be either sexpdata.Symbol or list."
-        if isinstance(s, sexpdata.Symbol):
-            v = s.value()
-            assert v in layers_lut, f"ERROR: Layer type '{v}' is not allowed, for a list of options see: https://pytorch.org/docs/stable/nn.html"
-            # Add last layer with collected properties
-            if layer_last is not None:
-                # if len(layers) == 0 and implicit_shapes:
-                #     # TODO Allow for fixed/implicit out_features
-                #     print(layer_last)
-                layers.append(layers_lut[layer_last](**params))
-            # Flush params for next layer
-            params = {}
-            # Cache current layer to add properties
-            layer_last = v
-        elif isinstance(s, list):
-            assert len(s) == 2, f"ERROR: Key-value pair has unexpected length: {[_s.value() for _s in s]}"
-            assert layer_last is not None, f"ERROR: Architecture definition has to start with a layer, not its properties."
-            k = s[0].value()
-            v = s[1]
-            if isinstance(v, sexpdata.Symbol):
-                v = v.value()
-            if isinstance(v, list) and typecast_list:
-                v = tuple(v)
-            # TODO Make 'size' a special dynamic word for in_features/out_features
-            params[k] = v
-    # Add last layer from cache
-    # TODO Allow for fixed/implicit out_features
-    layers.append(layers_lut[layer_last](**params))
-    net = torch.nn.Sequential(*layers)
-    return net
+    @property
+    def failed_count_layers(self):
+        return 42
+        # self.failed_modules_optims = None
+        # self.failed_modules_losses = None
+        # self.failed_modules_layers = None
 
 
 def get_short_class_name(obj):
@@ -343,16 +570,28 @@ def get_architecture_id(task, schema, preprocessing, net, optim):
 @click.command()
 @click.argument("sexpr_loss")
 def print_parsed_loss_sexpr(sexpr_loss):
-    print(parse_loss_sexpr(sexpr_loss))
+    try:
+        sexpr_parser = SExprParser(fail_summary=True, fail_list=True)
+        print(sexpr_parser.parse_loss_sexpr(sexpr_loss))
+    except Exception as e:
+        print(f"Could not parse optimizer: {e}")
 
 
 @click.command()
 @click.argument("sexpr_optimizer")
 def print_parsed_optimizer_sexpr(sexpr_optimizer):
-    print(parse_optimizer_sexpr(sexpr_optimizer))
+    try:
+        sexpr_parser = SExprParser(fail_summary=True, fail_list=True)
+        print(sexpr_parser.parse_optimizer_sexpr(sexpr_optimizer))
+    except Exception as e:
+        print(f"Could not parse optimizer: {e}")
 
 
 @click.command()
 @click.argument("sexpr_architecture")
 def print_parsed_architecture_sexpr(sexpr_architecture):
-    print(parse_architecture_sexpr(sexpr_architecture))
+    try:
+        sexpr_parser = SExprParser(fail_summary=True, fail_list=True)
+        print(sexpr_parser.parse_architecture_sexpr(sexpr_architecture))
+    except Exception as e:
+        print(f"Could not parse optimizer: {e}")
