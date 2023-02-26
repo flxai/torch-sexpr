@@ -595,3 +595,24 @@ def print_parsed_architecture_sexpr(sexpr_architecture):
         print(sexpr_parser.parse_architecture_sexpr(sexpr_architecture))
     except Exception as e:
         print(f"Could not parse optimizer: {e}")
+
+@click.command()
+def print_available_losses():
+    sexpr_parser = SExprParser(fail_summary=True, fail_list=True)
+    sexpr_parser._load_losses()
+    for loss in sexpr_parser.losses:
+        print(loss)
+
+@click.command()
+def print_available_optimizers():
+    sexpr_parser = SExprParser(fail_summary=True, fail_list=True)
+    sexpr_parser._load_optims()
+    for optimizer in sexpr_parser.optims:
+        print(optimizer)
+
+@click.command()
+def print_available_layers():
+    sexpr_parser = SExprParser(fail_summary=True, fail_list=True)
+    sexpr_parser._load_layers()
+    for layer in sexpr_parser.layers:
+        print(layer)

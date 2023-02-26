@@ -19,6 +19,9 @@ torchmetrics = "^0.11.1"
 torch-sexpr-parse-loss = "torch_sexpr.parse:print_parsed_loss_sexpr"
 torch-sexpr-parse-optimizer = "torch_sexpr.parse:print_parsed_optimizer_sexpr"
 torch-sexpr-parse-architecture = "torch_sexpr.parse:print_parsed_architecture_sexpr"
+torch-sexpr-list-losses = "torch_sexpr.parse:print_available_losses"
+torch-sexpr-list-optimizers = "torch_sexpr.parse:print_available_optimizers"
+torch-sexpr-list-layers = "torch_sexpr.parse:print_available_layers"
 
 [build-system]
 requires = ["poetry-core"]
