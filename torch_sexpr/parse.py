@@ -374,17 +374,13 @@ class SExprParser:
     def __init__(self, fail_summary=False, fail_list=False):
         self.fail_summary = fail_summary
         self.fail_list = fail_list
-        self.optims = None
-        self.losses = None
-        self.layers = None
+        self._optims = None
+        self._losses = None
+        self._layers = None
         self.fails_optims = None
         self.fails_losses = None
         self.fails_layers = None
         self.initial_fail = True
-
-    @staticmethod
-    def _getattr_recursive(path):
-        return 
 
     def _extrapolate_module_keys(self, keys, base_module):
         ret = {}
@@ -413,28 +409,24 @@ class SExprParser:
                     print(f"  {name}")
 
     def _load_optims(self):
-        if not self.optims:
-            self.optims, fails_optims = self._extrapolate_module_keys(_TORCH_OPTIMS, 'torch.optim')
-            self.fails_optims = fails_optims
-            self.report_fails(self.fails_optims)
+        self._optims, fails_optims = self._extrapolate_module_keys(_TORCH_OPTIMS, 'torch.optim')
+        self.fails_optims = fails_optims
+        self.report_fails(self.fails_optims)
 
     def _load_losses(self):
-        if not self.losses:
-            losses_torch, fails_losses_torch = self._extrapolate_module_keys(_TORCH_LOSSES, 'torch.nn')
-            losses_torchmetrics, fails_losses_torchmetrics = \
-                    self._extrapolate_module_keys(_TORCHMETRICS, 'torchmetrics')
-            self.losses = losses_torch | losses_torchmetrics
-            self.fails_losses = fails_losses_torch | fails_losses_torchmetrics
-            self.report_fails(self.fails_losses)
+        losses_torch, fails_losses_torch = self._extrapolate_module_keys(_TORCH_LOSSES, 'torch.nn')
+        losses_torchmetrics, fails_losses_torchmetrics = \
+                self._extrapolate_module_keys(_TORCHMETRICS, 'torchmetrics')
+        self._losses = losses_torch | losses_torchmetrics
+        self.fails_losses = fails_losses_torch | fails_losses_torchmetrics
+        self.report_fails(self.fails_losses)
 
     def _load_layers(self):
-        if not self.layers:
-            self.layers, fails_layers = self._extrapolate_module_keys(_TORCH_LAYERS, 'torch.nn')
-            self.fails_layers = fails_layers
-            self.report_fails(self.fails_layers)
+        self._layers, fails_layers = self._extrapolate_module_keys(_TORCH_LAYERS, 'torch.nn')
+        self.fails_layers = fails_layers
+        self.report_fails(self.fails_layers)
 
     def parse_loss_sexpr(self, sexpr_loss):
-        self._load_losses()
         sexp = sexpdata.loads(sexpr_loss)
         assert isinstance(sexp, list), f"ERROR: Must define loss as sexpr list."
         params = {}
@@ -459,7 +451,6 @@ class SExprParser:
         return loss
 
     def parse_optimizer_sexpr(self, sexpr_optimizer, net=None):
-        self._load_optims()
         sexp = sexpdata.loads(sexpr_optimizer)
         assert isinstance(sexp, list), "ERROR: Must define optimizer as sexpr list."
         params = {}
@@ -489,7 +480,6 @@ class SExprParser:
         return optim
 
     def parse_architecture_sexpr(self, sexpr_architecture, typecast_list=True):
-        self._load_layers()
         sexp = sexpdata.loads(sexpr_architecture)
         assert isinstance(sexp, list), "ERROR: Must define layers as sexpr list."
         layers = []
@@ -529,19 +519,22 @@ class SExprParser:
         return net
 
     @property
-    def failed_count_optims(self):
-        return 42
+    def optims(self):
+        if not self._optims:
+            self._load_optims()
+        return self._optims
 
     @property
-    def failed_count_losses(self):
-        return 42
+    def losses(self):
+        if not self._losses:
+            self._load_losses()
+        return self._losses
 
     @property
-    def failed_count_layers(self):
-        return 42
-        # self.failed_modules_optims = None
-        # self.failed_modules_losses = None
-        # self.failed_modules_layers = None
+    def layers(self):
+        if not self._layers:
+            self._load_layers()
+        return self._layers
 
 
 def get_short_class_name(obj):
@@ -599,20 +592,17 @@ def print_parsed_architecture_sexpr(sexpr_architecture):
 @click.command()
 def print_available_losses():
     sexpr_parser = SExprParser(fail_summary=True, fail_list=True)
-    sexpr_parser._load_losses()
     for loss in sexpr_parser.losses:
         print(loss)
 
 @click.command()
 def print_available_optimizers():
     sexpr_parser = SExprParser(fail_summary=True, fail_list=True)
-    sexpr_parser._load_optims()
     for optimizer in sexpr_parser.optims:
         print(optimizer)
 
 @click.command()
 def print_available_layers():
     sexpr_parser = SExprParser(fail_summary=True, fail_list=True)
-    sexpr_parser._load_layers()
     for layer in sexpr_parser.layers:
         print(layer)
