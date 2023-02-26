@@ -218,7 +218,7 @@ TORCH_LAYERS = {
 }
 
 
-def parse_loss_sexpr(sexpr_loss, losses_lut=TORCH_LOSSES, custom_losses=CUSTOM_LOSSES):
+def parse_loss_sexpr(sexpr_loss, losses_lut=TORCH_LOSSES):
     if sexpr_loss in custom_losses:
         return custom_losses[sexpr_loss]
     sexp = sexpdata.loads(sexpr_loss)
