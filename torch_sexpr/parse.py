@@ -371,9 +371,8 @@ _TORCH_LAYERS = [
 ]
 
 class SExprParser:
-    def __init__(self, fail_summary=False, fail_list=False):
-        self.fail_summary = fail_summary
-        self.fail_list = fail_list
+    def __init__(self, verbose=False):
+        self.verbose = verbose
         self._optims = None
         self._losses = None
         self._layers = None
@@ -399,14 +398,15 @@ class SExprParser:
         return ret, fails
 
     def report_fails(self, fails):
-        if self.fail_summary and len(fails):
+        if self.verbose and len(fails):
             if self.initial_fail:
-                print("The following methods could not be imported (your PyTorch/TorchMetrics version might be too old:")
+                print("The following methods could not be imported (your PyTorch/TorchMetrics version might be too old:",
+                      file=sys.stderr)
             for fail, failed_names in fails.items():
                 count = len(failed_names)
-                print(f"Failed imports for '{fail}': {count}")
+                print(f"Failed imports for '{fail}': {count}", file=sys.stderr)
                 for name in failed_names:
-                    print(f"  {name}")
+                    print(f"  {name}", file=sys.stderr)
 
     def _load_optims(self):
         self._optims, fails_optims = self._extrapolate_module_keys(_TORCH_OPTIMS, 'torch.optim')
@@ -560,49 +560,62 @@ def get_architecture_id(task, schema, preprocessing, net, optim):
     return architecture_id
 
 
-@click.command()
+@click.group()
+@click.pass_context
+@click.option('-v', '--verbose', is_flag=True, help="Show details on failing imports/missing options")
+def cli(context, verbose):
+    context.ensure_object(dict)
+    context.obj['verbose'] = verbose
+
+@cli.command()
+@click.pass_context
 @click.argument("sexpr_loss")
-def print_parsed_loss_sexpr(sexpr_loss):
+def parse_loss(context, sexpr_loss):
     try:
-        sexpr_parser = SExprParser(fail_summary=True, fail_list=True)
+        sexpr_parser = SExprParser(verbose=context.obj['verbose'])
         print(sexpr_parser.parse_loss_sexpr(sexpr_loss))
     except Exception as e:
         print(f"Could not parse optimizer: {e}")
 
 
-@click.command()
+@cli.command()
+@click.pass_context
 @click.argument("sexpr_optimizer")
-def print_parsed_optimizer_sexpr(sexpr_optimizer):
+def parse_optimizer(context, sexpr_optimizer):
     try:
-        sexpr_parser = SExprParser(fail_summary=True, fail_list=True)
+        sexpr_parser = SExprParser(verbose=context.obj['verbose'])
         print(sexpr_parser.parse_optimizer_sexpr(sexpr_optimizer))
     except Exception as e:
         print(f"Could not parse optimizer: {e}")
 
 
-@click.command()
+@cli.command()
+@click.pass_context
 @click.argument("sexpr_architecture")
-def print_parsed_architecture_sexpr(sexpr_architecture):
+def parse_architecture(context, sexpr_architecture):
     try:
-        sexpr_parser = SExprParser(fail_summary=True, fail_list=True)
+        sexpr_parser = SExprParser(verbose=context.obj['verbose'])
         print(sexpr_parser.parse_architecture_sexpr(sexpr_architecture))
     except Exception as e:
         print(f"Could not parse optimizer: {e}")
 
-@click.command()
-def print_available_losses():
-    sexpr_parser = SExprParser(fail_summary=True, fail_list=True)
+@cli.command()
+@click.pass_context
+def list_losses(context):
+    sexpr_parser = SExprParser(verbose=context.obj['verbose'])
     for loss in sexpr_parser.losses:
         print(loss)
 
-@click.command()
-def print_available_optimizers():
-    sexpr_parser = SExprParser(fail_summary=True, fail_list=True)
+@cli.command()
+@click.pass_context
+def list_optimizers(context):
+    sexpr_parser = SExprParser(verbose=context.obj['verbose'])
     for optimizer in sexpr_parser.optims:
         print(optimizer)
 
-@click.command()
-def print_available_layers():
-    sexpr_parser = SExprParser(fail_summary=True, fail_list=True)
+@cli.command()
+@click.pass_context
+def list_layers(context):
+    sexpr_parser = SExprParser(verbose=context.obj['verbose'])
     for layer in sexpr_parser.layers:
         print(layer)
