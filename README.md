@@ -51,53 +51,25 @@ The available optimizers for architectures are described in [PyTorch's documenta
 
 ### Command line interface
 
-This library comes bundled with CLIs that allow for easy use from within the shell.
-
-#### Architectures
-
-You can list all available layers for architectures using:
+This library comes bundled with a CLI that allow for easy use from within the shell.
+It can parse and list architectures/layers, losses and optimizers.
+Use the following command to show all its options.
 
 ```console
-$ torch-sexpr-list-layers
-```
-
-You can parse an architecture serialized as an S-expression using:
-
-```console
-$ torch-sexpr-parse-architecture "(Conv2d (in_channels 20) (out_channels 20) (kernel_size 5))"
-```
-
-#### Losses
-
-You can list all available layers for architectures using:
-
-```console
-$ torch-sexpr-list-losses
-```
-
-You can parse an architecture serialized as an S-expression using:
-
-```console
-$ torch-sexpr-parse-loss "(MSELoss)"
-```
-
-#### Optimizers
-
-You can list all available layers for architectures using:
-
-```console
-$ torch-sexpr-list-optimizers
-```
-
-You can parse an architecture serialized as an S-expression using:
-
-```console
-$ torch-sexpr-parse-optimizer "(Adam (lr 1e-5))"
+$ torch-sexpr --help
 ```
 
 ## Installation
 
-The project is hosted on PyPI, so you can install it using common tools.
+The project is (to be) hosted on PyPI, so you can install it using common tools.
+
+### Nix Flakes
+
+You can run the CLI using [Nix Flakes](https://nixos.wiki/wiki/Flakes).
+
+```console
+$ nix run "github:flxai/torch-sexpr"
+```
 
 ## Primer on S-expressions
 
